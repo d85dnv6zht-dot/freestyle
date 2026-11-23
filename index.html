@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Treino de Rima</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #0b0b0c;
+      color: #f4f4f5;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 720px;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3.5rem;
+    }
+
+    .timer {
+      font-size: 1.125rem;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      color: #52525b;
+      font-variant-numeric: tabular-nums;
+      transition: color 0.3s ease;
+    }
+
+    .timer.running {
+      color: #a1a1aa;
+    }
+
+    .word-area {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+      min-height: 7.5rem;
+      justify-content: center;
+    }
+
+    .word {
+      font-size: clamp(2.25rem, 7vw, 4.75rem);
+      font-weight: 500;
+      letter-spacing: -0.03em;
+      text-align: center;
+      line-height: 1.1;
+      color: #f4f4f5;
+      word-break: break-word;
+    }
+
+    .word.idle {
+      color: #27272a;
+    }
+
+    .word.fade-in {
+      animation: fadeUp 0.25s ease-out;
+    }
+
+    .progress-track {
+      width: 140px;
+      height: 2px;
+      background-color: #18181b;
+      overflow: hidden;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+
+    .progress-track.visible {
+      opacity: 1;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 100%;
+      background-color: #e4e4e7;
+      transform-origin: left center;
+    }
+
+    .progress-bar.animating {
+      animation-name: shrink;
+      animation-timing-function: linear;
+      animation-fill-mode: forwards;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.875rem;
+    }
+
+    button {
+      background: transparent;
+      color: #a1a1aa;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 0.75rem 1.5rem;
+      font-family: inherit;
+      font-size: 0.875rem;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      border-color: #52525b;
+      color: #f4f4f5;
+    }
+
+    button.active {
+      background-color: #f4f4f5;
+      color: #0b0b0c;
+      border-color: #f4f4f5;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes shrink {
+      from {
+        transform: scaleX(1);
+      }
+      to {
+        transform: scaleX(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <div class="timer" id="timer">00:00</div>
+
+    <div class="word-area">
+      <div class="word idle" id="word">—</div>
+      <div class="progress-track" id="progressTrack">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button data-duration="60" data-interval="5">Hard Mode</button>
+      <button data-duration="60" data-interval="10">Easy Mode</button>
+      <button data-duration="180" data-interval="20">Freestyle</button>
+    </div>
+  </main>
+
+  <script src="dicionario.js"></script>
+  <script>
+    const timerEl = document.getElementById("timer");
+    const wordEl = document.getElementById("word");
+    const progressTrack = document.getElementById("progressTrack");
+    const progressBar = document.getElementById("progressBar");
+    const buttons = document.querySelectorAll(".controls button");
+
+    // Filtra palavras curtas demais (como "a", "à") e hífens sem alterar seu dicionario.js
+    const bancoPalavras = typeof PALAVRAS !== "undefined"
+      ? PALAVRAS.filter((p) => p.length >= 3 && !p.includes("-"))
+      : [];
+
+    let countdownId = null;
+    let activeButton = null;
+    let lastWord = "";
+
+    function formatTime(totalSeconds) {
+      const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+      const seconds = String(totalSeconds % 60).padStart(2, "0");
+      return `${minutes}:${seconds}`;
+    }
+
+    function getRandomWord() {
+      if (bancoPalavras.length === 0) return "dicionario.js ausente";
+      let next = "";
+      do {
+        next = bancoPalavras[Math.floor(Math.random() * bancoPalavras.length)];
+      } while (next === lastWord && bancoPalavras.length > 1);
+      lastWord = next;
+      return next;
+    }
+
+    function showNewWord(intervalSeconds) {
+      wordEl.classList.remove("idle", "fade-in");
+      void wordEl.offsetWidth;
+      wordEl.textContent = getRandomWord();
+      wordEl.classList.add("fade-in");
+
+      progressTrack.classList.add("visible");
+      progressBar.classList.remove("animating");
+      void progressBar.offsetWidth;
+      progressBar.style.animationDuration = `${intervalSeconds}s`;
+      progressBar.classList.add("animating");
+    }
+
+    function stopMode(resetDisplay = true) {
+      clearInterval(countdownId);
+      countdownId = null;
+
+      if (activeButton) {
+        activeButton.classList.remove("active");
+        activeButton = null;
+      }
+
+      timerEl.classList.remove("running");
+      progressTrack.classList.remove("visible");
+      progressBar.classList.remove("animating");
+
+      if (resetDisplay) {
+        timerEl.textContent = "00:00";
+        wordEl.textContent = "—";
+        wordEl.classList.add("idle");
+      }
+    }
+
+    function startMode(button) {
+      // Clicar novamente no modo ativo encerra o cronômetro
+      if (activeButton === button) {
+        stopMode(true);
+        return;
+      }
+
+      stopMode(false);
+
+      const duration = Number(button.dataset.duration);
+      const wordInterval = Number(button.dataset.interval);
+
+      let remaining = duration;
+      let elapsed = 0;
+
+      activeButton = button;
+      button.classList.add("active");
+      timerEl.classList.add("running");
+      timerEl.textContent = formatTime(remaining);
+
+      showNewWord(wordInterval);
+
+      countdownId = setInterval(() => {
+        remaining--;
+        elapsed++;
+        timerEl.textContent = formatTime(remaining);
+
+        if (remaining <= 0) {
+          stopMode(false);
+          return;
+        }
+
+        if (elapsed % wordInterval === 0) {
+          showNewWord(wordInterval);
+        }
+      }, 1000);
+    }
+
+    buttons.forEach((btn) => {
+      btn.addEventListener("click", () => startMode(btn));
+    });
+  </script>
+</body>
+</html>
